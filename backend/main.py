@@ -128,7 +128,15 @@ async def startup_event():
     except Exception as e:
         print(f'⚠️ Предупреждение: не удалось загрузить egov_api: {e}')
     get_jinja_env()
-app.add_middleware(CORSMiddleware, allow_origins=['http://localhost:8080', 'http://127.0.0.1:8080'], allow_credentials=True, allow_methods=['*'], allow_headers=['*'])
+frontend_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        'FRONTEND_ORIGINS',
+        'http://localhost:8080,http://127.0.0.1:8080,https://cargoplatform-1.onrender.com'
+    ).split(',')
+    if origin.strip()
+]
+app.add_middleware(CORSMiddleware, allow_origins=frontend_origins, allow_credentials=True, allow_methods=['*'], allow_headers=['*'])
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 @app.middleware('http')
