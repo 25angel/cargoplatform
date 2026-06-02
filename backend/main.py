@@ -927,8 +927,26 @@ def _bg_update_request_distance(request_id: int, from_city: str, to_city: str, f
         db.close()
 
 def get_ai_chat_response(user_message: str, user_context: Optional[dict]=None) -> str:
-    """Получает ответ от AI чат-бота (использует Groq или OpenAI)"""
+    """Получает ответ от AI чат-бота (использует OpenRouter, затем Groq как fallback)"""
     try:
+        openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
+        if openrouter_api_key and openrouter_api_key != 'ваш_openrouter_ключ_здесь':
+            client = OpenAI(
+                api_key=openrouter_api_key,
+                base_url='https://openrouter.ai/api/v1',
+                default_headers={
+                    'HTTP-Referer': os.getenv('OPENROUTER_HTTP_REFERER', 'http://localhost'),
+                    'X-Title': os.getenv('OPENROUTER_APP_NAME', 'CargoAitu'),
+                },
+            )
+            system_prompt = 'Ты - полезный AI-ассистент для платформы грузоперевозок CargoAitu в Казахстане.\nТы помогаешь пользователям с вопросами о:\n- Создании заявок на перевозку\n- Подаче предложений (ставок)\n- Работе с контрактами и документами\n- Электронной цифровой подписи (ЭЦП)\n- Общих вопросах о платформе\n\nОтвечай кратко, по делу, на русском языке. Структурируй текст: между абзацами и шагами оставляй пустую строку; пошаговые инструкции оформляй нумерованным списком (1. 2. 3.) с переносом строки после каждого пункта. Не пиши всё одним сплошным абзацем. Если не знаешь ответа, предложи обратиться в поддержку.'
+            messages = [{'role': 'system', 'content': system_prompt}]
+            if user_context:
+                context_text = f'Контекст пользователя: {json.dumps(user_context, ensure_ascii=False)}'
+                messages.append({'role': 'system', 'content': context_text})
+            messages.append({'role': 'user', 'content': user_message})
+            response = client.chat.completions.create(model=os.getenv('OPENROUTER_MODEL', 'openai/gpt-4o-mini'), messages=messages, max_tokens=500, temperature=0.7)
+            return response.choices[0].message.content
         groq_api_key = os.getenv('GROQ_API_KEY')
         if groq_api_key:
             try:
@@ -942,18 +960,7 @@ def get_ai_chat_response(user_message: str, user_context: Optional[dict]=None) -
                 response = client.chat.completions.create(model='llama-3.1-8b-instant', messages=messages, max_tokens=500, temperature=0.7)
                 return response.choices[0].message.content
             except Exception as groq_error:
-                print(f'Ошибка Groq, пробую OpenAI: {groq_error}')
-        openai_api_key = os.getenv('OPENAI_API_KEY')
-        if openai_api_key and openai_api_key != 'ваш_openai_ключ_здесь':
-            client = OpenAI(api_key=openai_api_key)
-            system_prompt = 'Ты - полезный AI-ассистент для платформы грузоперевозок CargoAitu в Казахстане.\nТы помогаешь пользователям с вопросами о:\n- Создании заявок на перевозку\n- Подаче предложений (ставок)\n- Работе с контрактами и документами\n- Электронной цифровой подписи (ЭЦП)\n- Общих вопросах о платформе\n\nОтвечай кратко, по делу, на русском языке. Структурируй текст: между абзацами и шагами оставляй пустую строку; пошаговые инструкции оформляй нумерованным списком (1. 2. 3.) с переносом строки после каждого пункта. Не пиши всё одним сплошным абзацем. Если не знаешь ответа, предложи обратиться в поддержку.'
-            messages = [{'role': 'system', 'content': system_prompt}]
-            if user_context:
-                context_text = f'Контекст пользователя: {json.dumps(user_context, ensure_ascii=False)}'
-                messages.append({'role': 'system', 'content': context_text})
-            messages.append({'role': 'user', 'content': user_message})
-            response = client.chat.completions.create(model='gpt-3.5-turbo', messages=messages, max_tokens=500, temperature=0.7)
-            return response.choices[0].message.content
+                print(f'Ошибка Groq fallback: {groq_error}')
         return 'Извините, AI чат-бот временно недоступен. Пожалуйста, обратитесь в поддержку.'
     except Exception as e:
         print(f'Ошибка при получении ответа от AI: {e}')
