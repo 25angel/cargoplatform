@@ -1,5 +1,5 @@
 function getApiBase() {
-    return typeof API_URL !== "undefined" ? API_URL : "http://localhost:8000";
+    return typeof API_URL !== "undefined" ? API_URL : "https://cargoplatform.onrender.com";
 }
 
 function organizationsApiUrl(path) {

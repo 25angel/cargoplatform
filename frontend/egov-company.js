@@ -1,4 +1,4 @@
-const API_URL_EGOV = typeof API_URL !== "undefined" ? API_URL : "http://localhost:8000";
+const API_URL_EGOV = typeof API_URL !== "undefined" ? API_URL : "https://cargoplatform.onrender.com";
 
 let egovCompanyData = null;
 

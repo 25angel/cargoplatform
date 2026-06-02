@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:8000";
+const API_URL = "https://cargoplatform.onrender.com";
 
 const loginBtn = document.getElementById("loginBtn");
 

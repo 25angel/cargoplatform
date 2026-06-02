@@ -1,4 +1,4 @@
-const TRUCKS_API_URL = typeof API_URL !== "undefined" ? API_URL : "http://localhost:8000";
+const TRUCKS_API_URL = typeof API_URL !== "undefined" ? API_URL : "https://cargoplatform.onrender.com";
 
 var VEHICLE_ENUMS_FALLBACK = {
     vehicle_composition: [ {

@@ -1,4 +1,4 @@
-const API_URL_PAYMENT = typeof API_URL !== "undefined" ? API_URL : "http://localhost:8000";
+const API_URL_PAYMENT = typeof API_URL !== "undefined" ? API_URL : "https://cargoplatform.onrender.com";
 
 let currentUserId = null;
 

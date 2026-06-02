@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:8000";
+const API_URL = "https://cargoplatform.onrender.com";
 
 const checkAuth = () => {
     const userStr = localStorage.getItem("user");
@@ -208,7 +208,7 @@ function showUserProfile() {
                 localStorage.removeItem("returnToPaymentDetails");
                 setTimeout(async () => {
                     try {
-                        const apiUrl = typeof API_URL !== "undefined" ? API_URL : "http://localhost:8000";
+                        const apiUrl = typeof API_URL !== "undefined" ? API_URL : "https://cargoplatform.onrender.com";
                         const userResponse = await fetch(`${apiUrl}/api/users/${user.id}`, {
                             headers: {
                                 "X-User-Id": user.id.toString()

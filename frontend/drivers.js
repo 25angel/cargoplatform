@@ -1,4 +1,4 @@
-const DRIVERS_API_URL = typeof API_URL !== "undefined" ? API_URL : "http://localhost:8000";
+const DRIVERS_API_URL = typeof API_URL !== "undefined" ? API_URL : "https://cargoplatform.onrender.com";
 
 function loadUserData() {
     const userStr = localStorage.getItem("user");

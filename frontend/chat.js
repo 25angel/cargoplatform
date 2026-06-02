@@ -6,7 +6,7 @@ function getChatApiBase() {
     if (typeof API_URL !== "undefined" && API_URL) {
         return String(API_URL).replace(/\/$/, "");
     }
-    return "http://localhost:8000";
+    return "https://cargoplatform.onrender.com";
 }
 
 function chatRandomDelayMs() {

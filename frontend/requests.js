@@ -1,4 +1,4 @@
-const REQUESTS_API_URL = "http://localhost:8000/api";
+const REQUESTS_API_URL = "https://cargoplatform.onrender.com/api";
 
 const IS_DEVELOPMENT = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || localStorage.getItem("debug") === "true");
 
@@ -120,7 +120,7 @@ function getMetaBaseUrl() {
     if (typeof API_URL !== "undefined" && API_URL) {
         return API_URL.replace(/\/$/, "");
     }
-    return "http://localhost:8000";
+    return "https://cargoplatform.onrender.com";
 }
 
 async function loadRequestBodyTypeOptionsFromMeta() {
