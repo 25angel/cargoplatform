@@ -4024,7 +4024,6 @@ function displayContract(contract) {
     });
     const secondaryActionsHtml = buildContractSecondaryActionsHtml(contract);
     const infoHtml = buildContractInfoGroupsHtml(contract);
-    const isParticipant = isCustomer || isCarrier;
     const docsHtml = buildContractDocumentsSectionHtml(contract, isParticipant);
     contractContent.innerHTML = `\n    <div class="contract-tab">\n      <div class="contract-tab-region contract-tab-region--status">\n        ${summaryHtml}\n        ${stepperHtml}\n      </div>\n      <div class="contract-tab-region contract-tab-region--action">\n        <h3 class="contract-tab-section-title">Действия</h3>\n        ${primaryActionsHtml}\n        ${secondaryActionsHtml}\n      </div>\n      <div class="contract-tab-region contract-tab-region--detail">\n        ${infoHtml}\n        ${docsHtml}\n      </div>\n    </div>\n  `;
 }

@@ -7,6 +7,14 @@ function organizationsApiUrl(path) {
     return `${getApiBase()}/api${p}`;
 }
 
+function loadUserData() {
+    const userData = localStorage.getItem("user");
+    if (userData) {
+        return JSON.parse(userData);
+    }
+    return null;
+}
+
 let _partnershipSignInProgress = false;
 
 function escapeHtml(text) {
@@ -205,9 +213,6 @@ function renderOrganizationCardSimple(org) {
 }
 
 function orgApiHeaders() {
-    if (typeof loadUserData !== "function") {
-        throw new Error("Пользователь не авторизован");
-    }
     const user = loadUserData();
     if (!user || !user.id) {
         throw new Error("Пользователь не авторизован");
