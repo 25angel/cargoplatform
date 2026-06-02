@@ -4688,7 +4688,7 @@ body.login-page .main.login-main {
 
 .landing-hero {
   flex: 1;
-  background-image: url('https://cargoplatform.onrender.com/assets/landing_image.jpg');
+  background-image: url('assets/landing_image.jpg');
   background-size: cover;
   background-position: center;
   display: flex;
