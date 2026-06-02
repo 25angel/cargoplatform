@@ -1456,7 +1456,7 @@ window.loadGoogleMaps = function() {
   
   window.googleMapsLoading = (async function() {
     try {
-      const response = await fetch('http://localhost:8000/api/google-maps-key');
+      const response = await fetch('https://cargoplatform.onrender.com/api/google-maps-key');
       if (!response.ok) {
         throw new Error('Google Maps API ключ не найден');
       }
