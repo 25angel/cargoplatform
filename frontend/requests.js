@@ -3693,16 +3693,20 @@ async function loadContractInfo(requestId) {
                 const contractDate = new Date(requestData.contract_created_at).toLocaleString("ru-RU");
                 contractContent.innerHTML = `\n          <div class="detail-section">\n            <h3>Информация о контракте</h3>\n            <div class="detail-grid">\n              <div class="detail-item full-width">\n                <label>Статус</label>\n                <div style="color: #10b981; font-weight: 600;">✓ Контракт создан</div>\n              </div>\n              <div class="detail-item full-width">\n                <label>Дата создания</label>\n                <div>${contractDate}</div>\n              </div>\n              ${requestData.assigned_driver_name ? `\n                <div class="detail-item full-width">\n                  <label>Водитель</label>\n                  <div>${requestData.assigned_driver_name}${requestData.assigned_driver_phone ? `, тел.: ${requestData.assigned_driver_phone}` : ""}</div>\n                </div>\n              ` : ""}\n              ${requestData.assigned_vehicle_info ? `\n                <div class="detail-item full-width">\n                  <label>Транспортное средство</label>\n                  <div>${requestData.assigned_vehicle_info}</div>\n                </div>\n              ` : ""}\n            </div>\n            <div style="margin-top: 20px; padding: 12px; background: #f0f9ff; border: 1px solid #4a90e2; border-radius: 6px;">\n              <div style="font-size: 13px; color: #666;">\n                Контракт создан и ожидает полной загрузки данных. Детальная информация будет доступна позже.\n              </div>\n            </div>\n          </div>\n        `;
                 return;
+            } else if (response.status === 403) {
+                contractContent.innerHTML = `\n        <div class="empty">\n          <div class="empty-title">Доступ к контракту ограничен</div>\n          <div class="empty-text">Контракт содержит конфиденциальные данные и доступен только участникам заявки.</div>\n        </div>\n      `;
+                return;
             }
-            throw new Error("Ошибка загрузки контракта");
+            const errorData = await response.json().catch(() => null);
+            throw new Error(errorData?.detail || "Ошибка загрузки контракта");
         } catch (error) {
             console.error("Ошибка загрузки контракта:", error);
             if (requestData && requestData.contract_created_at) {
                 const contractDate = new Date(requestData.contract_created_at).toLocaleString("ru-RU");
-                contractContent.innerHTML = `\n          <div class="detail-section">\n            <h3>Информация о контракте</h3>\n            <div class="detail-grid">\n              <div class="detail-item full-width">\n                <label>Статус</label>\n                <div style="color: #10b981; font-weight: 600;">✓ Контракт создан</div>\n              </div>\n              <div class="detail-item full-width">\n                <label>Дата создания</label>\n                <div>${contractDate}</div>\n              </div>\n            </div>\n            <div style="margin-top: 20px; padding: 12px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px;">\n              <div style="font-size: 13px; color: #856404;">\n                Ошибка загрузки детальной информации о контракте: ${error.message}\n              </div>\n            </div>\n          </div>\n        `;
+                contractContent.innerHTML = `\n          <div class="detail-section">\n            <h3>Информация о контракте</h3>\n            <div class="detail-grid">\n              <div class="detail-item full-width">\n                <label>Статус</label>\n                <div style="color: #10b981; font-weight: 600;">✓ Контракт создан</div>\n              </div>\n              <div class="detail-item full-width">\n                <label>Дата создания</label>\n                <div>${contractDate}</div>\n              </div>\n            </div>\n            <div style="margin-top: 20px; padding: 12px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px;">\n              <div style="font-size: 13px; color: #856404;">\n                ${error.message === "Нет доступа к контракту этой заявки" ? "Доступ к детальной информации ограничен. Контракт виден только участникам заявки." : `Ошибка загрузки детальной информации о контракте: ${error.message}`}\n              </div>\n            </div>\n          </div>\n        `;
                 return;
             }
-            contractContent.innerHTML = `\n        <div class="empty">\n          <div class="empty-title">Ошибка загрузки контракта</div>\n          <div class="empty-text">${error.message}</div>\n        </div>\n      `;
+            contractContent.innerHTML = `\n        <div class="empty">\n          <div class="empty-title">Ошибка загрузки контракта</div>\n          <div class="empty-text">${error.message === "Нет доступа к контракту этой заявки" ? "Доступ ограничен. Контракт виден только участникам заявки." : error.message}</div>\n        </div>\n      `;
         }
     } else {
         contractContent.innerHTML = `\n      <div class="empty">\n        <div class="empty-icon"></div>\n        <div class="empty-title">Контракт не создан</div>\n        <div class="empty-text">Перевозчик еще не создал контракт</div>\n      </div>\n    `;
@@ -3712,6 +3716,43 @@ async function loadContractInfo(requestId) {
 function escapeHtmlContract(s) {
     if (s == null || s === void 0) return "";
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+async function downloadProtectedContractDocument(filePath, filename) {
+    if (!filePath) return;
+    try {
+        const baseUrl = REQUESTS_API_URL.replace(/\/api$/, "");
+        const encodedPath = String(filePath).split("/").map(segment => encodeURIComponent(segment)).join("/");
+        const response = await fetch(`${baseUrl}/contracts/${encodedPath}`, {
+            headers: getHeaders()
+        });
+        if (!response.ok) {
+            const error = await response.json().catch(() => null);
+            throw new Error(error?.detail || "Не удалось скачать документ");
+        }
+        const blob = await response.blob();
+        if (!blob.size) {
+            throw new Error("Получен пустой файл");
+        }
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = filename || filePath.split("/").pop() || "document.pdf";
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+            if (link.parentNode) document.body.removeChild(link);
+            try { URL.revokeObjectURL(blobUrl); } catch (e) {}
+        }, 100);
+    } catch (error) {
+        console.error("Ошибка скачивания документа:", error);
+        if (typeof showError === "function") {
+            showError(error.message || "Не удалось скачать документ");
+        } else {
+            alert(error.message || "Не удалось скачать документ");
+        }
+    }
 }
 
 function parseContractSignatureState(contract) {
@@ -3945,12 +3986,12 @@ function buildContractDocumentsSectionHtml(contract, isParticipant) {
     } else if (contract.signed_document_path) {
         const signedName = contract.signed_document_path.replace("contracts/", "");
         const origName = contract.document_path.split("/").pop();
-        docMain = `\n      <div class="contract-tab-doc-links">\n        <a href="${base}/contracts/${encodeURIComponent(signedName)}" target="_blank" rel="noopener" class="btn-login contract-tab-btn">Скачать договор</a>\n        <a href="${base}/contracts/${encodeURIComponent(origName)}" target="_blank" rel="noopener" class="btn-outline contract-tab-btn">Оригинал без подписи</a>\n      </div>\n      <p class="contract-tab-doc-note">Подписанный файл включает все страницы договора и страницу с электронной подписью.</p>\n    `;
+        docMain = `\n      <div class="contract-tab-doc-links">\n        <button type="button" class="btn-login contract-tab-btn" onclick='downloadProtectedContractDocument(${JSON.stringify(`contracts/${signedName}`)}, ${JSON.stringify(signedName)})'>Скачать договор</button>\n        <button type="button" class="btn-outline contract-tab-btn" onclick='downloadProtectedContractDocument(${JSON.stringify(`contracts/${origName}`)}, ${JSON.stringify(origName)})'>Оригинал без подписи</button>\n      </div>\n      <p class="contract-tab-doc-note">Подписанный файл включает все страницы договора и страницу с электронной подписью.</p>\n    `;
     } else {
         const origName = contract.document_path.split("/").pop();
-        docMain = `\n      <div class="contract-tab-doc-links">\n        <a href="${base}/contracts/${encodeURIComponent(origName)}" target="_blank" rel="noopener" class="btn-outline contract-tab-btn">Скачать договор</a>\n      </div>\n    `;
+        docMain = `\n      <div class="contract-tab-doc-links">\n        <button type="button" class="btn-outline contract-tab-btn" onclick='downloadProtectedContractDocument(${JSON.stringify(`contracts/${origName}`)}, ${JSON.stringify(origName)})'>Скачать договор</button>\n      </div>\n    `;
     }
-    const poaBlock = contract.status === "signed" && contract.signed_document_path && contract.power_of_attorney_path && contract.power_of_attorney_signature_xml && contract.signed_power_of_attorney_path ? `\n      <div class="contract-tab-doc-poa">\n        <a href="${base}/contracts/${encodeURIComponent(contract.signed_power_of_attorney_path.replace("contracts/", ""))}" target="_blank" rel="noopener" class="btn-login contract-tab-btn">Скачать подписанную доверенность (с QR)</a>\n      </div>\n    ` : "";
+    const poaBlock = contract.status === "signed" && contract.signed_document_path && contract.power_of_attorney_path && contract.power_of_attorney_signature_xml && contract.signed_power_of_attorney_path ? `\n      <div class="contract-tab-doc-poa">\n        <button type="button" class="btn-login contract-tab-btn" onclick='downloadProtectedContractDocument(${JSON.stringify(contract.signed_power_of_attorney_path)}, ${JSON.stringify(contract.signed_power_of_attorney_path.split("/").pop())})'>Скачать подписанную доверенность (с QR)</button>\n      </div>\n    ` : "";
     return `\n    <div class="contract-tab-section contract-tab-section--docs">\n      <h3 class="contract-tab-section-title">Документы</h3>\n      ${docMain}\n      ${sigBlock}\n      ${poaBlock}\n    </div>\n  `;
 }
 
@@ -4621,8 +4662,8 @@ async function loadClosingInfo(requestId) {
             const iconCheck = '<svg class="closing-flow__complete-check-ico" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" fill="currentColor" opacity="0.12"/><path d="M8.5 12.5l2.2 2.2 4.8-5.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
             const iconDoc = '<svg class="closing-flow__doc-ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>';
             const iconInvoice = '<svg class="closing-flow__doc-ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 14l2 2 4-4M7 7h10M7 11h4"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h6.172a2 2 0 011.414.586l2.828 2.828A2 2 0 0120 7.828V19a2 2 0 01-2 2H7a2 2 0 01-2-2V5z"/></svg>';
-            const actBtn = actUrl ? `<a href="${actUrl}" target="_blank" rel="noopener noreferrer" class="closing-flow__doc-btn closing-flow__doc-btn--primary">${iconDoc}<span>${actLabel}</span></a>` : "";
-            const invBtn = invoiceUrl ? `<a href="${invoiceUrl}" target="_blank" rel="noopener noreferrer" class="closing-flow__doc-btn closing-flow__doc-btn--secondary">${iconInvoice}<span>Счёт-фактура</span></a>` : "";
+            const actBtn = actUrl ? `<button type="button" class="closing-flow__doc-btn closing-flow__doc-btn--primary" onclick='downloadProtectedContractDocument(${JSON.stringify(request.signed_act_path || request.act_path)}, ${JSON.stringify((request.signed_act_path || request.act_path).split("/").pop())})'>${iconDoc}<span>${actLabel}</span></button>` : "";
+            const invBtn = invoiceUrl ? `<button type="button" class="closing-flow__doc-btn closing-flow__doc-btn--secondary" onclick='downloadProtectedContractDocument(${JSON.stringify(request.invoice_path)}, ${JSON.stringify(request.invoice_path.split("/").pop())})'>${iconInvoice}<span>Счёт-фактура</span></button>` : "";
             closingContent.innerHTML = `\n        <div class="closing-flow closing-flow--completed-state">\n          <div class="closing-flow__complete-card">\n            <div class="closing-flow__complete-status">\n              <div class="closing-flow__complete-icon-wrap">${iconCheck}</div>\n              <h3 class="closing-flow__complete-title">Перевозка успешно завершена</h3>\n              <p class="closing-flow__complete-sub">Все документы оформлены и доступны ниже</p>\n            </div>\n            <div class="closing-flow__complete-docs-block">\n              <p class="closing-flow__complete-docs-heading">Документы по заказу</p>\n              <div class="closing-flow__complete-doc-row">\n                ${actBtn}\n                ${invBtn}\n              </div>\n            </div>\n          </div>\n        </div>\n      `;
             return;
         }
@@ -4639,7 +4680,7 @@ async function loadClosingInfo(requestId) {
             if (!bothSigned) {
                 if (customerSigned && !carrierSigned) waitSub = '<p class="closing-flow__status-sub">Ожидает подписания перевозчиком</p>'; else if (carrierSigned && !customerSigned) waitSub = '<p class="closing-flow__status-sub">Ожидает подписания заказчиком</p>'; else waitSub = '<p class="closing-flow__status-sub">Ожидает подписания сторонами</p>';
             }
-            step1Body = `\n        <p class="closing-flow__desc">Акт создан. Подтверждает выполнение перевозки.</p>\n        <div class="closing-flow__actions">\n          <a href="${actUrl}" target="_blank" rel="noopener noreferrer" class="btn-login contract-tab-btn contract-tab-btn--block" style="text-align:center;text-decoration:none;display:inline-block;">Открыть акт</a>\n        </div>\n        ${waitSub}\n      `;
+            step1Body = `\n        <p class="closing-flow__desc">Акт создан. Подтверждает выполнение перевозки.</p>\n        <div class="closing-flow__actions">\n          <button type="button" class="btn-login contract-tab-btn contract-tab-btn--block" style="text-align:center;text-decoration:none;display:inline-block;" onclick='downloadProtectedContractDocument(${JSON.stringify(request.act_path)}, ${JSON.stringify(request.act_path.split("/").pop())})'>Открыть акт</button>\n        </div>\n        ${waitSub}\n      `;
         }
         let step2Body = "";
         if (!hasAct) {
@@ -4660,9 +4701,9 @@ async function loadClosingInfo(requestId) {
             const signBtnCustomer = !customerSigned && isCustomer ? `<button type="button" class="btn-login contract-tab-btn contract-tab-btn--block" onclick="signActWithECP(${request.id})">Подписать акт</button>` : "";
             const signBtnCarrier = !carrierSigned && isCarrier ? `<button type="button" class="btn-login contract-tab-btn contract-tab-btn--block" onclick="signActWithECP(${request.id})">Подписать акт</button>` : "";
             const signedActUrl = request.signed_act_path ? `${baseUrl}/contracts/${request.signed_act_path.replace("contracts/", "")}` : "";
-            const downloadSigned = signedActUrl ? `<a href="${signedActUrl}" target="_blank" rel="noopener noreferrer" class="closing-flow__link-secondary">Скачать подписанный файл</a>` : "";
+            const downloadSigned = signedActUrl ? `<button type="button" class="closing-flow__link-secondary" onclick='downloadProtectedContractDocument(${JSON.stringify(request.signed_act_path)}, ${JSON.stringify(request.signed_act_path.split("/").pop())})'>Скачать подписанный файл</button>` : "";
             const actUrl = `${baseUrl}/contracts/${request.act_path.replace("contracts/", "")}`;
-            const downloadDraft = !signedActUrl ? `<a href="${actUrl}" target="_blank" rel="noopener noreferrer" class="closing-flow__link-secondary">Скачать без подписи</a>` : "";
+            const downloadDraft = !signedActUrl ? `<button type="button" class="closing-flow__link-secondary" onclick='downloadProtectedContractDocument(${JSON.stringify(request.act_path)}, ${JSON.stringify(request.act_path.split("/").pop())})'>Скачать без подписи</button>` : "";
             step2Body = `\n        ${partialNote}\n        <div class="closing-flow__actions">\n          ${signBtnCustomer}\n          ${signBtnCarrier}\n          <div class="closing-flow__actions-row">\n            ${downloadSigned}\n            ${downloadDraft}\n          </div>\n        </div>\n      `;
         } else {
             let sigDetails = "";
@@ -4679,7 +4720,7 @@ async function loadClosingInfo(requestId) {
                 }
             }
             const signedActUrl = request.signed_act_path ? `${baseUrl}/contracts/${request.signed_act_path.replace("contracts/", "")}` : "";
-            step2Body = `\n        <div class="closing-flow__success-inline">\n          <div class="closing-flow__success-inline-title">Акт подписан</div>\n          ${sigDetails}\n        </div>\n        ${signedActUrl ? `\n          <div class="closing-flow__actions">\n            <a href="${signedActUrl}" target="_blank" rel="noopener noreferrer" class="btn-outline contract-tab-btn contract-tab-btn--block" style="text-align:center;display:inline-block;">Открыть подписанный акт</a>\n          </div>\n        ` : ""}\n      `;
+            step2Body = `\n        <div class="closing-flow__success-inline">\n          <div class="closing-flow__success-inline-title">Акт подписан</div>\n          ${sigDetails}\n        </div>\n        ${signedActUrl ? `\n          <div class="closing-flow__actions">\n            <button type="button" class="btn-outline contract-tab-btn contract-tab-btn--block" style="text-align:center;display:inline-block;" onclick='downloadProtectedContractDocument(${JSON.stringify(request.signed_act_path)}, ${JSON.stringify(request.signed_act_path.split("/").pop())})'>Открыть подписанный акт</button>\n          </div>\n        ` : ""}\n      `;
         }
         let step3Body = "";
         if (!bothSigned) {
@@ -4693,7 +4734,7 @@ async function loadClosingInfo(requestId) {
         } else {
             const invoiceUrl = `${baseUrl}/contracts/${request.invoice_path.replace("contracts/", "")}`;
             const numLine = request.invoice_number ? `<div class="closing-flow__sig-line" style="margin-top:4px;">Номер: ${escapeHtmlContract(request.invoice_number)}</div>` : "";
-            step3Body = `\n        <div class="closing-flow__success-inline">\n          <div class="closing-flow__success-inline-title">Счёт-фактура создана</div>\n          ${numLine}\n        </div>\n        <div class="closing-flow__actions">\n          <a href="${invoiceUrl}" target="_blank" rel="noopener noreferrer" class="btn-outline contract-tab-btn contract-tab-btn--block" style="text-align:center;display:inline-block;">Открыть счёт-фактуру</a>\n        </div>\n      `;
+            step3Body = `\n        <div class="closing-flow__success-inline">\n          <div class="closing-flow__success-inline-title">Счёт-фактура создана</div>\n          ${numLine}\n        </div>\n        <div class="closing-flow__actions">\n          <button type="button" class="btn-outline contract-tab-btn contract-tab-btn--block" style="text-align:center;display:inline-block;" onclick='downloadProtectedContractDocument(${JSON.stringify(request.invoice_path)}, ${JSON.stringify(request.invoice_path.split("/").pop())})'>Открыть счёт-фактуру</button>\n        </div>\n      `;
         }
         const completionPending = !!request.completion_requested_at && request.status !== "completed";
         let footerHtml = "";
