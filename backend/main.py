@@ -108,6 +108,54 @@ def sanitize_request_response_for_non_participant(response: RequestResponse, use
         response.act_signature_xml = None
         response.act_signature_cert_data = None
         response.invoice_path = None
+
+def _user_can_access_request_documents(user_id: int, request: Request) -> bool:
+    return user_id == request.customer_id or user_id == request.selected_carrier_id
+
+def _resolve_document_request_context(file_path: str, db: Session) -> tuple[Optional[Request], Optional[Contract], str]:
+    """Определяет, к какой заявке/контракту относится документ."""
+    normalized = file_path.replace("\\", "/").lstrip("/")
+    document_kind = "unknown"
+    request_obj: Optional[Request] = None
+    contract_obj: Optional[Contract] = None
+
+    contract_match = re.search(r'(?:^|/)contract_(\d+)(?:_|\.|$)', normalized)
+    if contract_match:
+        document_kind = "contract"
+        contract_id = int(contract_match.group(1))
+        contract_obj = db.query(Contract).filter(Contract.id == contract_id).first()
+        if contract_obj:
+            request_obj = db.query(Request).filter(Request.id == contract_obj.request_id).first()
+        return request_obj, contract_obj, document_kind
+
+    act_match = re.search(r'(?:^|/)act_(\d+)(?:_|\.|$)', normalized)
+    if act_match:
+        document_kind = "act"
+        request_id = int(act_match.group(1))
+        request_obj = db.query(Request).filter(Request.id == request_id).first()
+        if request_obj:
+            contract_obj = db.query(Contract).filter(Contract.request_id == request_id).first()
+        return request_obj, contract_obj, document_kind
+
+    invoice_match = re.search(r'(?:^|/)invoice_(\d+)(?:_|\.|$)', normalized)
+    if invoice_match:
+        document_kind = "invoice"
+        request_id = int(invoice_match.group(1))
+        request_obj = db.query(Request).filter(Request.id == request_id).first()
+        if request_obj:
+            contract_obj = db.query(Contract).filter(Contract.request_id == request_id).first()
+        return request_obj, contract_obj, document_kind
+
+    poa_match = re.search(r'(?:^|/)power_of_attorney_(\d+)(?:_|\.|$)', normalized)
+    if poa_match:
+        document_kind = "power_of_attorney"
+        contract_id = int(poa_match.group(1))
+        contract_obj = db.query(Contract).filter(Contract.id == contract_id).first()
+        if contract_obj:
+            request_obj = db.query(Request).filter(Request.id == contract_obj.request_id).first()
+        return request_obj, contract_obj, document_kind
+
+    return None, None, document_kind
 app = FastAPI(title='CargoAitu - Платформа автоматизации грузоперевозок')
 _jinja_env = None
 
@@ -2190,12 +2238,14 @@ async def create_contract(request_id: int, db: Session=Depends(get_db), user_id:
         raise HTTPException(status_code=500, detail=f'Ошибка при создании контракта: {str(e)}')
 
 @app.get('/api/requests/{request_id}/history', response_model=List[RequestHistoryResponse])
-def get_request_history(request_id: int, db: Session=Depends(get_db), _: int=Depends(get_current_user_id)):
+def get_request_history(request_id: int, db: Session=Depends(get_db), user_id: int=Depends(get_current_user_id)):
     """Получение истории изменений заявки"""
     try:
         request = db.query(Request).filter(Request.id == request_id).first()
         if not request:
             raise HTTPException(status_code=404, detail='Заявка не найдена')
+        if not _user_can_access_request_documents(user_id, request):
+            raise HTTPException(status_code=404, detail='История не найдена')
         history = db.query(RequestHistory).filter(RequestHistory.request_id == request_id).order_by(RequestHistory.created_at.desc()).all()
         print(f'[DEBUG] Запрос истории для request_id={request_id}, найдено записей: {len(history)}')
         filtered_history = [h for h in history if h.request_id == request_id]
@@ -2951,37 +3001,15 @@ async def verify_power_of_attorney_signature(contract_id: int, request: VerifyRe
 @app.get('/contracts/{file_path:path}')
 async def get_contract_document(file_path: str, db: Session=Depends(get_db), user_id: int=Depends(get_current_user_id)):
     """Получение документа контракта (включая подписанные документы)"""
-    import os
     from pathlib import Path
-    import re
-
-    # Извлекаем contract_id из пути файла
-    contract_id_match = re.search(r'contract_(\d+)', file_path)
-    if not contract_id_match:
-        raise HTTPException(status_code=400, detail='Некорректный путь к документу')
-
-    contract_id = int(contract_id_match.group(1))
-
-    # Проверяем права доступа
-    contract = db.query(Contract).filter(Contract.id == contract_id).first()
-    if not contract:
+    request_obj, contract_obj, document_kind = _resolve_document_request_context(file_path, db)
+    if not request_obj and not contract_obj:
         raise HTTPException(status_code=404, detail='Документ не найден')
-
-    # Только заказчик и перевозчик могут получить документы контракта
-    # Возвращаем 404 вместо 403, чтобы не раскрывать существование документа
-    if user_id != contract.customer_id and user_id != contract.carrier_id:
+    if request_obj and not _user_can_access_request_documents(user_id, request_obj):
         raise HTTPException(status_code=404, detail='Документ не найден')
-
-    if file_path.startswith('signed/'):
-        file_full_path = Path('contracts') / file_path
-    elif file_path.startswith('power_of_attorney/'):
-        file_full_path = Path('contracts') / file_path
-    elif file_path.startswith('acts/'):
-        file_full_path = Path('contracts') / file_path
-    elif file_path.startswith('invoices/'):
-        file_full_path = Path('contracts') / file_path
-    else:
-        file_full_path = Path('contracts') / file_path
+    if contract_obj and not _user_can_access_request_documents(user_id, request_obj or db.query(Request).filter(Request.id == contract_obj.request_id).first()):
+        raise HTTPException(status_code=404, detail='Документ не найден')
+    file_full_path = Path('contracts') / file_path
     if not file_full_path.exists() or not file_full_path.is_file():
         raise HTTPException(status_code=404, detail='Документ не найден')
     contracts_dir = Path('contracts').resolve()

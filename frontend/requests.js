@@ -3578,6 +3578,10 @@ async function loadRequestHistory() {
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`Ошибка загрузки истории для заявки ${requestId}:`, response.status, errorText);
+            if (response.status === 403 || response.status === 404) {
+                historyContainer.innerHTML = `\n      <div class="empty">\n        <div class="empty-title">Доступ к истории ограничен</div>\n        <div class="empty-text">История изменений доступна только участникам заявки.</div>\n      </div>\n    `;
+                return;
+            }
             throw new Error("Ошибка загрузки истории");
         }
         const history = await response.json();
@@ -3595,7 +3599,7 @@ async function loadRequestHistory() {
         console.error("Ошибка загрузки истории:", error);
         const historyList = document.getElementById("historyList");
         if (historyList && !historyList.dataset.loaded) {
-            historyList.innerHTML = `\n      <div class="empty">\n        <div class="empty-title">Ошибка загрузки истории</div>\n        <div class="empty-text">${error.message}</div>\n      </div>\n    `;
+            historyList.innerHTML = `\n      <div class="empty">\n        <div class="empty-title">Ошибка загрузки истории</div>\n        <div class="empty-text">${error.message === "Ошибка загрузки истории" ? "Не удалось загрузить историю изменений." : error.message}</div>\n      </div>\n    `;
         }
     }
 }
@@ -3722,7 +3726,8 @@ async function downloadProtectedContractDocument(filePath, filename) {
     if (!filePath) return;
     try {
         const baseUrl = REQUESTS_API_URL.replace(/\/api$/, "");
-        const encodedPath = String(filePath).split("/").map(segment => encodeURIComponent(segment)).join("/");
+        const normalizedPath = String(filePath).replace(/^contracts\//, "");
+        const encodedPath = normalizedPath.split("/").map(segment => encodeURIComponent(segment)).join("/");
         const response = await fetch(`${baseUrl}/contracts/${encodedPath}`, {
             headers: getHeaders()
         });
