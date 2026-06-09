@@ -2985,6 +2985,18 @@ async def verify_power_of_attorney_signature(contract_id: int, request: VerifyRe
 async def get_contract_document(file_path: str, db: Session=Depends(get_db), user_id: int=Depends(get_current_user_id)):
     """Получение документа контракта (включая подписанные документы)"""
     from pathlib import Path
+    backend_dir = Path(__file__).parent
+    contracts_root = backend_dir / 'contracts'
+
+    def _resolve_under_contracts(candidate: str) -> Path:
+        candidate_str = str(candidate).replace('\\', '/').lstrip('/')
+        if candidate_str.startswith('contracts/'):
+            candidate_str = candidate_str[len('contracts/'):]
+        candidate_path = Path(candidate_str)
+        if candidate_path.is_absolute():
+            return candidate_path
+        return contracts_root / candidate_str
+
     request_obj, contract_obj, document_kind = _resolve_document_request_context(file_path, db)
     if not request_obj and not contract_obj:
         raise HTTPException(status_code=404, detail='Документ не найден')
@@ -2992,7 +3004,7 @@ async def get_contract_document(file_path: str, db: Session=Depends(get_db), use
         raise HTTPException(status_code=404, detail='Документ не найден')
     if contract_obj and not _user_can_access_request_documents(user_id, request_obj or db.query(Request).filter(Request.id == contract_obj.request_id).first()):
         raise HTTPException(status_code=404, detail='Документ не найден')
-    file_full_path = Path('contracts') / file_path
+    file_full_path = _resolve_under_contracts(file_path)
     if not file_full_path.exists() or not file_full_path.is_file():
         fallback_paths: list[Optional[str]] = []
         if document_kind == 'contract' and contract_obj:
@@ -3007,20 +3019,14 @@ async def get_contract_document(file_path: str, db: Session=Depends(get_db), use
         for candidate in fallback_paths:
             if not candidate:
                 continue
-            candidate_str = str(candidate).replace('\\', '/').lstrip('/')
-            candidate_path = Path(candidate_str)
-            if not candidate_path.is_absolute():
-                if candidate_str.startswith('contracts/'):
-                    candidate_path = Path(candidate_str)
-                else:
-                    candidate_path = Path('contracts') / candidate_str
+            candidate_path = _resolve_under_contracts(candidate)
             if candidate_path.exists() and candidate_path.is_file():
                 file_full_path = candidate_path
                 break
 
     if not file_full_path.exists() or not file_full_path.is_file():
         raise HTTPException(status_code=404, detail='Документ не найден')
-    contracts_dir = Path('contracts').resolve()
+    contracts_dir = contracts_root.resolve()
     file_resolved = file_full_path.resolve()
     if not str(file_resolved).startswith(str(contracts_dir)):
         raise HTTPException(status_code=403, detail='Доступ запрещен')
