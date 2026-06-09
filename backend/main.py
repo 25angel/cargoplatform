@@ -114,9 +114,51 @@ def _user_can_access_request_documents(user_id: int, request: Request) -> bool:
 def _resolve_document_request_context(file_path: str, db: Session) -> tuple[Optional[Request], Optional[Contract], str]:
     """Определяет, к какой заявке/контракту относится документ."""
     normalized = file_path.replace("\\", "/").lstrip("/")
+    normalized_no_prefix = normalized[len("contracts/"):] if normalized.startswith("contracts/") else normalized
     document_kind = "unknown"
     request_obj: Optional[Request] = None
     contract_obj: Optional[Contract] = None
+
+    # Сначала пытаемся найти документ по точному значению, которое уже хранится в БД.
+    exact_contract = db.query(Contract).filter(
+        or_(
+            Contract.document_path == normalized,
+            Contract.document_path == normalized_no_prefix,
+            Contract.signed_document_path == normalized,
+            Contract.signed_document_path == normalized_no_prefix,
+            Contract.power_of_attorney_path == normalized,
+            Contract.power_of_attorney_path == normalized_no_prefix,
+            Contract.signed_power_of_attorney_path == normalized,
+            Contract.signed_power_of_attorney_path == normalized_no_prefix,
+        )
+    ).first()
+    if exact_contract:
+        contract_obj = exact_contract
+        request_obj = db.query(Request).filter(Request.id == exact_contract.request_id).first()
+        if exact_contract.signed_document_path in {normalized, normalized_no_prefix} or exact_contract.document_path in {normalized, normalized_no_prefix}:
+            document_kind = "contract"
+        elif exact_contract.signed_power_of_attorney_path in {normalized, normalized_no_prefix} or exact_contract.power_of_attorney_path in {normalized, normalized_no_prefix}:
+            document_kind = "power_of_attorney"
+        return request_obj, contract_obj, document_kind
+
+    exact_request = db.query(Request).filter(
+        or_(
+            Request.act_path == normalized,
+            Request.act_path == normalized_no_prefix,
+            Request.signed_act_path == normalized,
+            Request.signed_act_path == normalized_no_prefix,
+            Request.invoice_path == normalized,
+            Request.invoice_path == normalized_no_prefix,
+        )
+    ).first()
+    if exact_request:
+        request_obj = exact_request
+        contract_obj = db.query(Contract).filter(Contract.request_id == exact_request.id).first()
+        if exact_request.signed_act_path in {normalized, normalized_no_prefix} or exact_request.act_path in {normalized, normalized_no_prefix}:
+            document_kind = "act"
+        elif exact_request.invoice_path in {normalized, normalized_no_prefix}:
+            document_kind = "invoice"
+        return request_obj, contract_obj, document_kind
 
     contract_match = re.search(r'(?:^|/)contract_(\d+)(?:_|\.|$)', normalized)
     if contract_match:
