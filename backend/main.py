@@ -2994,12 +2994,38 @@ async def get_contract_document(file_path: str, db: Session=Depends(get_db), use
         raise HTTPException(status_code=404, detail='Документ не найден')
     file_full_path = Path('contracts') / file_path
     if not file_full_path.exists() or not file_full_path.is_file():
+        fallback_paths: list[Optional[str]] = []
+        if document_kind == 'contract' and contract_obj:
+            fallback_paths = [contract_obj.signed_document_path, contract_obj.document_path]
+        elif document_kind == 'power_of_attorney' and contract_obj:
+            fallback_paths = [getattr(contract_obj, 'signed_power_of_attorney_path', None), getattr(contract_obj, 'power_of_attorney_path', None)]
+        elif document_kind == 'act' and request_obj:
+            fallback_paths = [request_obj.signed_act_path, request_obj.act_path]
+        elif document_kind == 'invoice' and request_obj:
+            fallback_paths = [request_obj.invoice_path]
+
+        for candidate in fallback_paths:
+            if not candidate:
+                continue
+            candidate_str = str(candidate).replace('\\', '/').lstrip('/')
+            candidate_path = Path(candidate_str)
+            if not candidate_path.is_absolute():
+                if candidate_str.startswith('contracts/'):
+                    candidate_path = Path(candidate_str)
+                else:
+                    candidate_path = Path('contracts') / candidate_str
+            if candidate_path.exists() and candidate_path.is_file():
+                file_full_path = candidate_path
+                break
+
+    if not file_full_path.exists() or not file_full_path.is_file():
         raise HTTPException(status_code=404, detail='Документ не найден')
     contracts_dir = Path('contracts').resolve()
     file_resolved = file_full_path.resolve()
     if not str(file_resolved).startswith(str(contracts_dir)):
         raise HTTPException(status_code=403, detail='Доступ запрещен')
-    return FileResponse(path=str(file_full_path), filename=file_path.split('/')[-1], media_type='application/pdf' if file_path.endswith('.pdf') else 'application/octet-stream')
+    resolved_name = file_full_path.name
+    return FileResponse(path=str(file_full_path), filename=resolved_name, media_type='application/pdf' if resolved_name.endswith('.pdf') else 'application/octet-stream')
 
 class ChatMessage(BaseModel):
     message: str
