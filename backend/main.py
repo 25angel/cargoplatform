@@ -115,6 +115,12 @@ def _resolve_document_request_context(file_path: str, db: Session) -> tuple[Opti
     """Определяет, к какой заявке/контракту относится документ."""
     normalized = file_path.replace("\\", "/").lstrip("/")
     normalized_no_prefix = normalized[len("contracts/"):] if normalized.startswith("contracts/") else normalized
+    normalized_variants = {
+        normalized,
+        normalized_no_prefix,
+        f'contracts/{normalized}',
+        f'contracts/{normalized_no_prefix}',
+    }
     document_kind = "unknown"
     request_obj: Optional[Request] = None
     contract_obj: Optional[Contract] = None
@@ -122,14 +128,10 @@ def _resolve_document_request_context(file_path: str, db: Session) -> tuple[Opti
     # Сначала пытаемся найти документ по точному значению, которое уже хранится в БД.
     exact_contract = db.query(Contract).filter(
         or_(
-            Contract.document_path == normalized,
-            Contract.document_path == normalized_no_prefix,
-            Contract.signed_document_path == normalized,
-            Contract.signed_document_path == normalized_no_prefix,
-            Contract.power_of_attorney_path == normalized,
-            Contract.power_of_attorney_path == normalized_no_prefix,
-            Contract.signed_power_of_attorney_path == normalized,
-            Contract.signed_power_of_attorney_path == normalized_no_prefix,
+            Contract.document_path.in_(normalized_variants),
+            Contract.signed_document_path.in_(normalized_variants),
+            Contract.power_of_attorney_path.in_(normalized_variants),
+            Contract.signed_power_of_attorney_path.in_(normalized_variants),
         )
     ).first()
     if exact_contract:
@@ -143,12 +145,9 @@ def _resolve_document_request_context(file_path: str, db: Session) -> tuple[Opti
 
     exact_request = db.query(Request).filter(
         or_(
-            Request.act_path == normalized,
-            Request.act_path == normalized_no_prefix,
-            Request.signed_act_path == normalized,
-            Request.signed_act_path == normalized_no_prefix,
-            Request.invoice_path == normalized,
-            Request.invoice_path == normalized_no_prefix,
+            Request.act_path.in_(normalized_variants),
+            Request.signed_act_path.in_(normalized_variants),
+            Request.invoice_path.in_(normalized_variants),
         )
     ).first()
     if exact_request:
@@ -167,6 +166,15 @@ def _resolve_document_request_context(file_path: str, db: Session) -> tuple[Opti
         contract_obj = db.query(Contract).filter(Contract.id == contract_id).first()
         if contract_obj:
             request_obj = db.query(Request).filter(Request.id == contract_obj.request_id).first()
+        return request_obj, contract_obj, document_kind
+
+    request_contract_match = re.search(r'(?:^|/)request_(\d+)_contract_(?:\d{8}_\d{6}|\d+)(?:_|\.|$)', normalized)
+    if request_contract_match:
+        document_kind = "contract"
+        request_id = int(request_contract_match.group(1))
+        request_obj = db.query(Request).filter(Request.id == request_id).first()
+        if request_obj:
+            contract_obj = db.query(Contract).filter(Contract.request_id == request_id).first()
         return request_obj, contract_obj, document_kind
 
     act_match = re.search(r'(?:^|/)act_(\d+)(?:_|\.|$)', normalized)
@@ -2237,7 +2245,8 @@ async def create_contract(request_id: int, db: Session=Depends(get_db), user_id:
             error_details = traceback.format_exc()
             print(f'Ошибка генерации PDF: {error_details}')
             raise HTTPException(status_code=500, detail=f'Ошибка генерации PDF: {str(e)}')
-        contracts_dir = Path('contracts')
+        backend_dir = Path(__file__).parent
+        contracts_dir = backend_dir / 'contracts'
         contracts_dir.mkdir(exist_ok=True)
         document_filename = f"request_{request_id}_contract_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
         document_path = contracts_dir / document_filename
@@ -2439,7 +2448,8 @@ async def upload_contract_document(contract_id: int, document: UploadFile=File(.
             raise HTTPException(status_code=400, detail='Документ уже загружен')
         import os
         from pathlib import Path
-        contracts_dir = Path('contracts')
+        backend_dir = Path(__file__).parent
+        contracts_dir = backend_dir / 'contracts'
         contracts_dir.mkdir(exist_ok=True)
         file_extension = Path(document.filename).suffix if document.filename else '.pdf'
         file_name = f'contract_{contract_id}_document{file_extension}'
