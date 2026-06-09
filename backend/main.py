@@ -913,11 +913,6 @@ async def update_payment_details(user_id: int, payment_details: PaymentDetailsUp
                 status = company_data.get('statusru', '').lower()
                 if 'ликвидирован' in status or 'прекращен' in status:
                     raise HTTPException(status_code=400, detail=f"Компания с БИН {bin_to_check} имеет статус '{company_data.get('statusru')}'. Невозможно сохранить реквизиты.")
-                if payment_details.recipient_name:
-                    verification_result = verify_company_data(bin_to_check, payment_details.recipient_name, db)
-                    if not verification_result.get('verified') or not verification_result.get('match'):
-                        official_name = company_data.get('nameru', 'не указано')
-                        raise HTTPException(status_code=400, detail=f'Название компании не совпадает с данными реестра. Официальное название: {official_name}')
         user.recipient_name = payment_details.recipient_name
         user.bank_name = payment_details.bank_name
         user.bank_bik = payment_details.bank_bik
