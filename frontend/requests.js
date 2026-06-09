@@ -3749,7 +3749,7 @@ async function downloadProtectedContractDocument(filePath, filename) {
         setTimeout(() => {
             if (link.parentNode) document.body.removeChild(link);
             try { URL.revokeObjectURL(blobUrl); } catch (e) {}
-        }, 100);
+        }, 300000);
     } catch (error) {
         console.error("Ошибка скачивания документа:", error);
         if (typeof showError === "function") {
